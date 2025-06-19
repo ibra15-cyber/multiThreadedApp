@@ -1,8 +1,10 @@
 package com.ibra.multithreaded.producer;
 
 
+import com.ibra.multithreaded.ConcurQueue;
 import com.ibra.multithreaded.model.Task;
 import com.ibra.multithreaded.model.TaskStatus;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Random;
@@ -10,14 +12,13 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Logger;
 
 /**
  * Producer thread that generates and submits tasks to the queue.
  * Each producer has different strategies for creating tasks.
  */
 public class TaskProducer implements Runnable {
-    private static final org.slf4j.Logger log = LoggerFactory.getLogger(TaskProducer.class);
+    private static final Logger log = LoggerFactory.getLogger(TaskProducer.class);
 
     private final String producerName;
     private final BlockingQueue<Task> taskQueue;

@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Shows the difference between unsafe shared state and thread-safe alternatives.
  */
 public class RaceConditionDemo {
-    // Changed: Use SLF4J Logger
     private static final Logger logger = LoggerFactory.getLogger(RaceConditionDemo.class);
 
     // Unsafe counter - will show race conditions
@@ -73,7 +72,6 @@ public class RaceConditionDemo {
         shutdownAndWait(executor);
         long endTime = System.currentTimeMillis();
 
-        // Changed: SLF4J parameterized logging
         logger.info("Unsafe Counter Result: {} (Expected: {}) - {}",
                 unsafeCounter, expectedTotal,
                 unsafeCounter == expectedTotal ? "CORRECT" : "RACE CONDITION DETECTED!");
@@ -81,7 +79,6 @@ public class RaceConditionDemo {
 
         // Show the lost updates
         if (unsafeCounter != expectedTotal) {
-            // Changed: SLF4J parameterized logging for warning
             logger.warn("Lost updates: {}", expectedTotal - unsafeCounter);
         }
     }
@@ -133,7 +130,6 @@ public class RaceConditionDemo {
         shutdownAndWait(executor);
         long endTime = System.currentTimeMillis();
 
-        // Changed: SLF4J parameterized logging
         logger.info("Synchronized Counter Result: {} (Expected: {}) - {}",
                 synchronizedCounter, expectedTotal,
                 synchronizedCounter == expectedTotal ? "CORRECT" : "ERROR");
@@ -152,62 +148,9 @@ public class RaceConditionDemo {
         }
     }
 
-    /**
-     * Demonstrates a simple deadlock scenario and its resolution
-     */
-    public static void demonstrateDeadlock() {
-        logger.info("=== Demonstrating Deadlock Prevention ===");
-
-        final Object lock1 = new Object();
-        final Object lock2 = new Object();
-
-        // This could cause deadlock if not handled properly
-        Thread t1 = new Thread(() -> {
-            synchronized (lock1) {
-                logger.info("Thread 1: Acquired lock1");
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-
-                synchronized (lock2) {
-                    logger.info("Thread 1: Acquired lock2");
-                }
-            }
-        }, "DeadlockDemo-1");
-
-        Thread t2 = new Thread(() -> {
-            // FIXED: Always acquire locks in the same order to prevent deadlock
-            synchronized (lock1) { // Same order as Thread 1
-                logger.info("Thread 2: Acquired lock1");
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-
-                synchronized (lock2) {
-                    logger.info("Thread 2: Acquired lock2");
-                }
-            }
-        }, "DeadlockDemo-2");
-
-        t1.start();
-        t2.start();
-
-        try {
-            t1.join();
-            t2.join();
-            logger.info("Deadlock demo completed successfully - no deadlock occurred!");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
 
     public static void main(String[] args) {
         demonstrateRaceConditions();
-        System.out.println();
-        demonstrateDeadlock();
     }
+
 }

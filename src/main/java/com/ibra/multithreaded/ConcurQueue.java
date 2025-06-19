@@ -1,6 +1,6 @@
 package com.ibra.multithreaded;
 
-import com.ibra.multithreaded.demo.RaceConditionDemo;
+// Removed: import com.ibra.multithreaded.demo.RaceConditionDemo; // No longer directly used in this version
 import com.ibra.multithreaded.model.Task;
 import com.ibra.multithreaded.model.TaskStatus;
 import com.ibra.multithreaded.monitor.SystemMonitor;
@@ -8,360 +8,299 @@ import com.ibra.multithreaded.producer.ProducerStrategy;
 import com.ibra.multithreaded.producer.TaskProducer;
 import com.ibra.multithreaded.worker.TaskProcessor;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.slf4j.Logger; // Changed: Import SLF4J Logger
+import org.slf4j.LoggerFactory; // Changed: Import SLF4J LoggerFactory
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+// Removed: import java.util.logging.Logger; (original JDK logger)
 
 /**
- * Main class for ConcurQueue - A Multithreaded Job Processing Platform
+ * ConcurQueue - A Multithreaded Job Processing Platform
  *
- * This system demonstrates advanced Java concurrency concepts including:
+ * This application demonstrates advanced Java concurrency concepts including:
  * - Producer-Consumer patterns with BlockingQueues
  * - Thread pools and ExecutorService
- * - Concurrent collections and atomic operations
- * - System monitoring and graceful shutdown
+ * - Concurrent collections and synchronization
+ * - Race condition detection and resolution
+ * - Retry mechanisms and fault tolerance
+ * - System monitoring and status tracking
  */
 public class ConcurQueue {
-    // Changed: Use SLF4J Logger
     private static final Logger logger = LoggerFactory.getLogger(ConcurQueue.class);
 
-    // System configuration
-    private static final int QUEUE_CAPACITY = 1000;
-    private static final int WORKER_POOL_SIZE = 5;
-    private static final int PRODUCER_COUNT = 3;
+    // Configuration constants
+    private static final int WORKER_POOL_SIZE = 4;
+    private static final int QUEUE_CAPACITY = 100;
+    private static final int RUNTIME_SECONDS = 60;
 
-    // Shared data structures
+    // Core components
     private final PriorityBlockingQueue<Task> taskQueue;
-    private final BlockingQueue<Task> retryQueue;
+    private final LinkedBlockingQueue<Task> retryQueue;
     private final ConcurrentHashMap<String, TaskStatus> taskStatusMap;
-
-    // Thread management
-    private final ExecutorService workerPool;
-    private final List<Thread> producerThreads;
-    private final Thread monitorThread;
-    private final Thread retryProcessorThread;
-
-    // System state
-    private final AtomicBoolean running;
+    private final ThreadPoolExecutor workerPool;
+    private final AtomicBoolean systemRunning;
     private final AtomicInteger processedCount;
     private final AtomicInteger failedCount;
 
-    // System components
-    private final SystemMonitor systemMonitor;
+    // Demonstrate race condition (initially unsafe)
+    private volatile int unsafeCounter = 0;
+    private final AtomicInteger safeCounter = new AtomicInteger(0);
+
+    // Threads
+    private final ExecutorService producerPool;
+    private final ExecutorService monitorPool;
+    private SystemMonitor systemMonitor;
 
     public ConcurQueue() {
-        // Initialize concurrent data structures
+        // Initialize core data structures
         this.taskQueue = new PriorityBlockingQueue<>(QUEUE_CAPACITY);
         this.retryQueue = new LinkedBlockingQueue<>();
         this.taskStatusMap = new ConcurrentHashMap<>();
-
-        // Initialize atomic counters
-        this.running = new AtomicBoolean(true);
+        this.systemRunning = new AtomicBoolean(true);
         this.processedCount = new AtomicInteger(0);
         this.failedCount = new AtomicInteger(0);
 
-        // Initialize thread pool for workers
-        this.workerPool = Executors.newFixedThreadPool(WORKER_POOL_SIZE, r -> {
-            Thread t = new Thread(r);
-            t.setName("ConcurQueue-Worker-" + t.getId());
-            t.setDaemon(false);
-            return t;
-        });
-
-        // Initialize system monitor
-        this.systemMonitor = new SystemMonitor(
-                taskQueue, retryQueue, taskStatusMap,
-                (ThreadPoolExecutor) workerPool, running,
-                processedCount, failedCount
+        // Initialize thread pools
+        this.workerPool = new ThreadPoolExecutor(
+                WORKER_POOL_SIZE,
+                WORKER_POOL_SIZE,
+                60L,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(),
+                new ThreadFactory() {
+                    private final AtomicInteger threadNumber = new AtomicInteger(1);
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        return new Thread(r, "Worker-" + threadNumber.getAndIncrement());
+                    }
+                }
         );
 
-        // Initialize threads
-        this.producerThreads = new ArrayList<>();
-        this.monitorThread = new Thread(systemMonitor, "SystemMonitor");
-        this.retryProcessorThread = new Thread(this::processRetryQueue, "RetryProcessor");
+        this.producerPool = Executors.newFixedThreadPool(3);
+        this.monitorPool = Executors.newSingleThreadExecutor();
 
         // Setup shutdown hook
         setupShutdownHook();
     }
 
-    /**
-     * Starts the ConcurQueue system
-     */
     public void start() {
         logger.info("Starting ConcurQueue system...");
 
-        // Start worker threads
-        startWorkers();
-
-        // Start producer threads
-        startProducers();
-
-        // Start retry processor
-        retryProcessorThread.start();
-
         // Start system monitor
-        monitorThread.start();
+        systemMonitor = new SystemMonitor(
+                taskQueue, retryQueue, taskStatusMap, workerPool,
+                systemRunning, processedCount, failedCount
+        );
+        monitorPool.submit(systemMonitor);
+
+        // Start worker threads
+        startWorkerThreads();
+
+        // Start producer threads with different strategies
+        startProducerThreads();
+
 
         logger.info("ConcurQueue system started successfully");
-        // Changed: SLF4J parameterized logging
-        logger.info("Configuration: {} workers, {} producers, queue capacity: {}",
-                WORKER_POOL_SIZE, PRODUCER_COUNT, QUEUE_CAPACITY);
     }
 
-    /**
-     * Starts worker threads using ExecutorService
-     */
-    private void startWorkers() {
+    private void startWorkerThreads() {
+        // Worker threads that process both regular and retry queues
         for (int i = 0; i < WORKER_POOL_SIZE; i++) {
-            TaskProcessor processor = new TaskProcessor(
-                    taskQueue, retryQueue, taskStatusMap,
-                    processedCount, failedCount
-            );
-            workerPool.submit(processor);
+            workerPool.submit(() -> {
+                TaskProcessor processor = new TaskProcessor(
+                        taskQueue, retryQueue, taskStatusMap, processedCount, failedCount
+                );
+                processor.run();
+            });
         }
-        // Changed: SLF4J parameterized logging
-        logger.info("Started {} worker threads", WORKER_POOL_SIZE);
+
+        // Separate thread to move retry tasks back to main queue
+        workerPool.submit(this::processRetryQueue);
     }
 
-    /**
-     * Starts producer threads with different strategies
-     */
-    private void startProducers() {
-        // Producer 1: High Priority Focused
-        TaskProducer producer1 = new TaskProducer(
-                "HighPriorityProducer", taskQueue, taskStatusMap, running,
-                3, 2, ProducerStrategy.HIGH_PRIORITY_FOCUSED
-        );
+    private void startProducerThreads() {
+        // Producer 1: High priority focused
+        producerPool.submit(new TaskProducer(
+                "HighPriorityProducer", taskQueue, taskStatusMap, systemRunning,
+                3, 5, ProducerStrategy.HIGH_PRIORITY_FOCUSED
+        ));
 
         // Producer 2: Balanced
-        TaskProducer producer2 = new TaskProducer(
-                "BalancedProducer", taskQueue, taskStatusMap, running,
+        producerPool.submit(new TaskProducer(
+                "BalancedProducer", taskQueue, taskStatusMap, systemRunning,
                 5, 3, ProducerStrategy.BALANCED
-        );
+        ));
 
-        // Producer 3: Low Priority Bulk
-        TaskProducer producer3 = new TaskProducer(
-                "BulkProducer", taskQueue, taskStatusMap, running,
-                8, 4, ProducerStrategy.LOW_PRIORITY_BULK
-        );
-
-        Thread t1 = new Thread(producer1, "Producer-1");
-        Thread t2 = new Thread(producer2, "Producer-2");
-        Thread t3 = new Thread(producer3, "Producer-3");
-
-        producerThreads.add(t1);
-        producerThreads.add(t2);
-        producerThreads.add(t3);
-
-        t1.start();
-        t2.start();
-        t3.start();
-
-        // Changed: SLF4J parameterized logging
-        logger.info("Started {} producer threads", PRODUCER_COUNT);
+        // Producer 3: Low priority bulk
+        producerPool.submit(new TaskProducer(
+                "BulkProducer", taskQueue, taskStatusMap, systemRunning,
+                8, 7, ProducerStrategy.LOW_PRIORITY_BULK
+        ));
     }
 
-    /**
-     * Processes tasks from the retry queue
-     */
     private void processRetryQueue() {
-        logger.info("Retry processor started");
-
-        while (running.get() || !retryQueue.isEmpty()) {
+        logger.info("Retry processor thread started."); // Added for clarity
+        while (!Thread.currentThread().isInterrupted()) {
             try {
-                Task retryTask = retryQueue.poll(1, TimeUnit.SECONDS);
-                if (retryTask != null) {
-                    // Add delay before retry
-                    Thread.sleep(2000); // 2 second delay
+                Task retryTask = retryQueue.take();
 
-                    // Re-queue the task
-                    taskQueue.put(retryTask);
-                    taskStatusMap.put(retryTask.getId().toString(), TaskStatus.SUBMITTED);
+                // Add delay before retry
+                Thread.sleep(2000);
 
-                    // Changed: SLF4J parameterized logging
-                    logger.info("Re-queued retry task {} (attempt {})",
-                            retryTask, retryTask.getRetryCount());
-                }
+                // Move back to main queue
+                taskQueue.put(retryTask);
+                logger.info("Moved retry task back to main queue: {}", retryTask);
+
             } catch (InterruptedException e) {
-                // Changed: SLF4J info with interruption message and throwable
-                logger.info("Retry processor interrupted", e); // Pass exception as last argument
                 Thread.currentThread().interrupt();
+                logger.info("Retry processor thread interrupted", e);
                 break;
             }
         }
-
-        logger.info("Retry processor stopped");
+        logger.info("Retry processor thread stopped."); // Added for clarity
     }
 
-    /**
-     * Runs the system for a specified duration
-     */
-    public void run(int durationSeconds) {
-        start();
 
+    public void runForDuration(int seconds) {
         try {
-            // Changed: SLF4J parameterized logging
-            logger.info("System will run for {} seconds...", durationSeconds);
-            Thread.sleep(durationSeconds * 1000L);
+            logger.info("Running system for {} seconds...", seconds);
+            Thread.sleep(seconds * 1000L);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            // Changed: SLF4J info with interruption message and throwable
-            logger.info("System interrupted", e); // Pass exception as last argument
+            logger.info("System run interrupted", e);
+        } finally {
+            shutdown();
         }
-
-        shutdown();
     }
 
-    /**
-     * Gracefully shuts down the system
-     */
     public void shutdown() {
-        logger.info("Initiating system shutdown...");
+        logger.info("Shutting down ConcurQueue system...");
 
         // Stop accepting new tasks
-        running.set(false);
+        systemRunning.set(false);
 
-        // Stop producers
-        for (Thread producer : producerThreads) {
-            producer.interrupt();
-        }
-
-        // Wait for producers to finish
-        for (Thread producer : producerThreads) {
-            try {
-                producer.join(5000); // Wait up to 5 seconds
-            } catch (InterruptedException e) {
-                // Changed: SLF4J error/warn with interruption message and throwable
-                logger.warn("Interrupted while waiting for producer {} to join", producer.getName(), e);
-                Thread.currentThread().interrupt();
+        // Shutdown producer threads
+        producerPool.shutdown();
+        try {
+            if (!producerPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                producerPool.shutdownNow();
             }
+        } catch (InterruptedException e) {
+            producerPool.shutdownNow();
+            Thread.currentThread().interrupt();
+            logger.warn("Interrupted while waiting for producer pool to terminate", e);
         }
 
         // Process remaining tasks in queue
-        // Changed: SLF4J parameterized logging
-        logger.info("Processing remaining {} tasks in queue...", taskQueue.size());
+        logger.info("Processing remaining tasks in queue...");
+        drainQueue();
 
-        // Shutdown worker pool gracefully
+        // Shutdown worker pool
         workerPool.shutdown();
         try {
-            if (!workerPool.awaitTermination(30, TimeUnit.SECONDS)) {
-                // Changed: SLF4J warning
-                logger.warn("Workers did not terminate gracefully, forcing shutdown");
+            if (!workerPool.awaitTermination(10, TimeUnit.SECONDS)) {
+                logger.warn("Worker pool did not terminate gracefully, forcing shutdown");
                 workerPool.shutdownNow();
             }
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            // Changed: SLF4J error/warn with interruption message and throwable
-            logger.warn("Interrupted while waiting for worker pool to terminate, forcing shutdown", e);
             workerPool.shutdownNow();
-        }
-
-        // Stop retry processor
-        retryProcessorThread.interrupt();
-        try {
-            retryProcessorThread.join(5000);
-        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            // Changed: SLF4J error/warn with interruption message and throwable
-            logger.warn("Interrupted while waiting for retry processor to join", e);
+            logger.warn("Interrupted while waiting for worker pool to terminate, forcing shutdown", e);
         }
 
-        // Stop monitor
-        monitorThread.interrupt();
+        // Shutdown monitor
+        monitorPool.shutdown();
         try {
-            monitorThread.join(5000);
+            if (!monitorPool.awaitTermination(2, TimeUnit.SECONDS)) {
+                monitorPool.shutdownNow();
+            }
         } catch (InterruptedException e) {
+            monitorPool.shutdownNow();
             Thread.currentThread().interrupt();
-            // Changed: SLF4J error/warn with interruption message and throwable
-            logger.warn("Interrupted while waiting for monitor to join", e);
+            logger.warn("Interrupted while waiting for monitor pool to terminate", e);
         }
 
-        // Final statistics
+        // Print final statistics
         printFinalStatistics();
 
         logger.info("ConcurQueue system shutdown complete");
     }
 
-    /**
-     * Sets up shutdown hook for graceful termination
-     */
+    private void drainQueue() {
+        int drainedTasks = 0;
+        // Changed condition: ensure system is not running or taskQueue is not empty to avoid infinite loop
+        while ((systemRunning.get() || !taskQueue.isEmpty()) && drainedTasks < 50) { // Limit to prevent excessive draining
+            try {
+                Task task = taskQueue.poll(100, TimeUnit.MILLISECONDS); // Use poll with timeout
+                if (task != null) {
+                    // In a real system, these would be properly processed
+                    taskStatusMap.put(task.getId().toString(), TaskStatus.COMPLETED);
+                    processedCount.incrementAndGet();
+                    drainedTasks++;
+                    logger.info("Drained task: {}", task);
+                } else {
+                    // No tasks in queue, maybe all processed
+                    break;
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.warn("Drain queue interrupted", e);
+                break;
+            }
+        }
+        // Changed: SLF4J parameterized logging
+        logger.info("Drained {} remaining tasks", drainedTasks);
+    }
+
+    private void printFinalStatistics() {
+        if (systemMonitor != null) {
+            SystemMonitor.SystemStats stats = systemMonitor.getCurrentStats();
+
+            logger.info("=== FINAL SYSTEM STATISTICS ===");
+            logger.info("Total tasks processed: {}", stats.processedCount());
+            logger.info("Total tasks failed: {}", stats.failedCount());
+            logger.info("Tasks remaining in queue: {}", stats.queueSize());
+            logger.info("Tasks in retry queue: {}", stats.retryQueueSize());
+            logger.info("Worker pool completed tasks: {}", stats.completedTasks());
+
+            logger.info("Task status breakdown:");
+            stats.statusCounts().forEach((status, count) ->
+                    logger.info("  {}: {}", status, count));
+        } else {
+            logger.warn("System monitor was not initialized, cannot print detailed final statistics.");
+        }
+    }
+
     private void setupShutdownHook() {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Shutdown hook triggered");
-            if (running.get()) {
+            if (systemRunning.get()) {
                 shutdown();
             }
-        }, "ShutdownHook"));
+        }, "ShutdownHook")); // Added name to the shutdown hook thread
     }
 
-    /**
-     * Prints final system statistics
-     */
-    private void printFinalStatistics() {
-        SystemMonitor.SystemStats stats = systemMonitor.getCurrentStats();
-
-        logger.info("=== FINAL SYSTEM STATISTICS ===");
-        // Changed: SLF4J parameterized logging
-        logger.info("Total tasks processed: {}", processedCount.get());
-        logger.info("Total tasks failed: {}", failedCount.get());
-        logger.info("Tasks remaining in queue: {}", stats.queueSize());
-        logger.info("Tasks in retry queue: {}", stats.retryQueueSize());
-        logger.info("Total worker threads completed: {}", stats.completedTasks());
-
-        logger.info("Task status breakdown:");
-        stats.statusCounts().forEach((status, count) ->
-                // Changed: SLF4J parameterized logging
-                logger.info("  {}: {}", status, count));
-    }
-
-    /**
-     * Demonstrates the race condition fixes
-     */
-    public void demonstrateRaceConditions() {
-        logger.info("\n" + "=".repeat(50));
-        logger.info("DEMONSTRATING RACE CONDITIONS AND FIXES");
-        logger.info("=".repeat(50));
-
-        RaceConditionDemo.demonstrateRaceConditions();
-        RaceConditionDemo.demonstrateDeadlock();
-
-        logger.info("=".repeat(50));
-        logger.info("RACE CONDITION DEMONSTRATION COMPLETE");
-        logger.info("=".repeat(50) + "\n");
-    }
-
-    /**
-     * Main entry point
-     */
     public static void main(String[] args) {
-        // Parse command line arguments
-        int durationSeconds = 30; // Default runtime
-        if (args.length > 0) {
-            try {
-                durationSeconds = Integer.parseInt(args[0]);
-            } catch (NumberFormatException e) {
-                // Changed: SLF4J warning with exception and message
-                logger.warn("Invalid duration argument, using default: {}", durationSeconds, e);
-            }
+
+        logger.info("Starting ConcurQueue demonstration...");
+
+        try {
+            ConcurQueue system = new ConcurQueue();
+            system.start();
+
+            // Run for specified duration
+            int runtimeSeconds = args.length > 0 ? Integer.parseInt(args[0]) : RUNTIME_SECONDS;
+            system.runForDuration(runtimeSeconds);
+
+        } catch (NumberFormatException e) {
+            logger.error("Invalid duration argument: {}. Using default runtime of {} seconds.", args.length > 0 ? args[0] : "N/A", RUNTIME_SECONDS, e);
+            new ConcurQueue().runForDuration(RUNTIME_SECONDS); // Run with default if argument is bad
+        } catch (Exception e) {
+            logger.error("System error during demonstration: {}", e.getMessage(), e);
         }
 
-        logger.info("=".repeat(60));
-        logger.info("CONCURQUEUE - MULTITHREADED JOB PROCESSING PLATFORM");
-        logger.info("=".repeat(60));
-
-        ConcurQueue system = new ConcurQueue();
-
-        // First demonstrate race conditions
-        system.demonstrateRaceConditions();
-
-        // Then run the main system
-        system.run(durationSeconds);
-
-        logger.info("Program completed successfully");
+        logger.info("ConcurQueue demonstration completed");
     }
 }

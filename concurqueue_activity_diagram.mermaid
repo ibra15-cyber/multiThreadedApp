@@ -1,0 +1,223 @@
+graph TD
+    Start([System Start]) --> Init[Initialize ConcurQueue System]
+    Init --> StartWorkers[Start Worker Thread Pool]
+    Init --> StartProducers[Start Producer Threads]
+    Init --> StartMonitor[Start System Monitor]
+    Init --> StartRetry[Start Retry Processor]
+    
+    %% Producer Flow
+    StartProducers --> P1{Producer 1<br/>High Priority}
+    StartProducers --> P2{Producer 2<br/>Balanced}
+    StartProducers --> P3{Producer 3<br/>Bulk Low Priority}
+    
+    P1 --> GenTask1[Generate High Priority Tasks]
+    P2 --> GenTask2[Generate Balanced Tasks]
+    P3 --> GenTask3[Generate Low Priority Tasks]
+    
+    GenTask1 --> Queue1[Put Task in Priority Queue]
+    GenTask2 --> Queue2[Put Task in Priority Queue]
+    GenTask3 --> Queue3[Put Task in Priority Queue]
+    
+    Queue1 --> UpdateStatus1[Update Status: SUBMITTED]
+    Queue2 --> UpdateStatus2[Update Status: SUBMITTED]
+    Queue3 --> UpdateStatus3[Update Status: SUBMITTED]
+    
+    UpdateStatus1 --> Sleep1[Sleep - Interval]
+    UpdateStatus2 --> Sleep2[Sleep - Interval]
+    UpdateStatus3 --> Sleep3[Sleep - Interval]
+    
+    Sleep1 --> Running1{System Running?}
+    Sleep2 --> Running2{System Running?}
+    Sleep3 --> Running3{System Running?}
+    
+    Running1 -->|Yes| GenTask1
+    Running2 -->|Yes| GenTask2
+    Running3 -->|Yes| GenTask3
+    
+    Running1 -->|No| ProducerEnd1[Producer 1 End]
+    Running2 -->|No| ProducerEnd2[Producer 2 End]
+    Running3 -->|No| ProducerEnd3[Producer 3 End]
+    
+    %% Shared Priority Queue (Synchronization Point)
+    Queue1 --> PriorityQueue[(Priority Blocking Queue<br/>🔒 Thread-Safe)]
+    Queue2 --> PriorityQueue
+    Queue3 --> PriorityQueue
+    
+    %% Worker Flow
+    StartWorkers --> W1{Worker 1}
+    StartWorkers --> W2{Worker 2}
+    StartWorkers --> W3{Worker 3}
+    StartWorkers --> W4{Worker 4}
+    StartWorkers --> W5{Worker 5}
+    
+    W1 --> TakeTask1[Take Task from Queue<br/>🔒 Blocking Operation]
+    W2 --> TakeTask2[Take Task from Queue<br/>🔒 Blocking Operation]
+    W3 --> TakeTask3[Take Task from Queue<br/>🔒 Blocking Operation]
+    W4 --> TakeTask4[Take Task from Queue<br/>🔒 Blocking Operation]
+    W5 --> TakeTask5[Take Task from Queue<br/>🔒 Blocking Operation]
+    
+    PriorityQueue --> TakeTask1
+    PriorityQueue --> TakeTask2
+    PriorityQueue --> TakeTask3
+    PriorityQueue --> TakeTask4
+    PriorityQueue --> TakeTask5
+    
+    TakeTask1 --> ProcessTask1[Update Status: PROCESSING<br/>Simulate Work]
+    TakeTask2 --> ProcessTask2[Update Status: PROCESSING<br/>Simulate Work]
+    TakeTask3 --> ProcessTask3[Update Status: PROCESSING<br/>Simulate Work]
+    TakeTask4 --> ProcessTask4[Update Status: PROCESSING<br/>Simulate Work]
+    TakeTask5 --> ProcessTask5[Update Status: PROCESSING<br/>Simulate Work]
+    
+    ProcessTask1 --> Success1{Success?}
+    ProcessTask2 --> Success2{Success?}
+    ProcessTask3 --> Success3{Success?}
+    ProcessTask4 --> Success4{Success?}
+    ProcessTask5 --> Success5{Success?}
+    
+    Success1 -->|Yes| Complete1[Status: COMPLETED<br/>Increment Counter]
+    Success2 -->|Yes| Complete2[Status: COMPLETED<br/>Increment Counter]
+    Success3 -->|Yes| Complete3[Status: COMPLETED<br/>Increment Counter]
+    Success4 -->|Yes| Complete4[Status: COMPLETED<br/>Increment Counter]
+    Success5 -->|Yes| Complete5[Status: COMPLETED<br/>Increment Counter]
+    
+    Success1 -->|No| CheckRetry1{Retry Count < 3?}
+    Success2 -->|No| CheckRetry2{Retry Count < 3?}
+    Success3 -->|No| CheckRetry3{Retry Count < 3?}
+    Success4 -->|No| CheckRetry4{Retry Count < 3?}
+    Success5 -->|No| CheckRetry5{Retry Count < 3?}
+    
+    CheckRetry1 -->|Yes| RetryQueue1[Put in Retry Queue<br/>Status: RETRYING]
+    CheckRetry2 -->|Yes| RetryQueue2[Put in Retry Queue<br/>Status: RETRYING]
+    CheckRetry3 -->|Yes| RetryQueue3[Put in Retry Queue<br/>Status: RETRYING]
+    CheckRetry4 -->|Yes| RetryQueue4[Put in Retry Queue<br/>Status: RETRYING]
+    CheckRetry5 -->|Yes| RetryQueue5[Put in Retry Queue<br/>Status: RETRYING]
+    
+    CheckRetry1 -->|No| Failed1[Status: FAILED<br/>Increment Failed Counter]
+    CheckRetry2 -->|No| Failed2[Status: FAILED<br/>Increment Failed Counter]
+    CheckRetry3 -->|No| Failed3[Status: FAILED<br/>Increment Failed Counter]
+    CheckRetry4 -->|No| Failed4[Status: FAILED<br/>Increment Failed Counter]
+    CheckRetry5 -->|No| Failed5[Status: FAILED<br/>Increment Failed Counter]
+    
+    %% Retry Queue Processing
+    RetryQueue1 --> RetryQueueShared[(Retry Queue<br/>🔒 Thread-Safe)]
+    RetryQueue2 --> RetryQueueShared
+    RetryQueue3 --> RetryQueueShared
+    RetryQueue4 --> RetryQueueShared
+    RetryQueue5 --> RetryQueueShared
+    
+    StartRetry --> RetryProcessor[Retry Processor Thread]
+    RetryProcessor --> PollRetry[Poll Retry Queue]
+    RetryQueueShared --> PollRetry
+    PollRetry --> HasRetryTask{Has Retry Task?}
+    HasRetryTask -->|Yes| DelayRetry[Delay 2 seconds]
+    DelayRetry --> RequeueTask[Requeue to Priority Queue<br/>Status: SUBMITTED]
+    RequeueTask --> PriorityQueue
+    HasRetryTask -->|No| RetryWait[Wait 1 second]
+    RetryWait --> RetryRunning{System Running?}
+    RetryRunning -->|Yes| PollRetry
+    RetryRunning -->|No| RetryEnd[Retry Processor End]
+    
+    %% Continue Worker Loop
+    Complete1 --> WorkerRunning1{Thread Interrupted?}
+    Complete2 --> WorkerRunning2{Thread Interrupted?}
+    Complete3 --> WorkerRunning3{Thread Interrupted?}
+    Complete4 --> WorkerRunning4{Thread Interrupted?}
+    Complete5 --> WorkerRunning5{Thread Interrupted?}
+    
+    Failed1 --> WorkerRunning1
+    Failed2 --> WorkerRunning2
+    Failed3 --> WorkerRunning3
+    Failed4 --> WorkerRunning4
+    Failed5 --> WorkerRunning5
+    
+    WorkerRunning1 -->|No| TakeTask1
+    WorkerRunning2 -->|No| TakeTask2
+    WorkerRunning3 -->|No| TakeTask3
+    WorkerRunning4 -->|No| TakeTask4
+    WorkerRunning5 -->|No| TakeTask5
+    
+    WorkerRunning1 -->|Yes| WorkerEnd1[Worker 1 End]
+    WorkerRunning2 -->|Yes| WorkerEnd2[Worker 2 End]
+    WorkerRunning3 -->|Yes| WorkerEnd3[Worker 3 End]
+    WorkerRunning4 -->|Yes| WorkerEnd4[Worker 4 End]
+    WorkerRunning5 -->|Yes| WorkerEnd5[Worker 5 End]
+    
+    %% System Monitor Flow
+    StartMonitor --> Monitor[System Monitor Thread]
+    Monitor --> LogStatus[Log System Status<br/>Queue Sizes, Active Workers]
+    LogStatus --> DetectStalled[Detect Stalled Tasks]
+    DetectStalled --> ExportCheck{Export Interval?}
+    ExportCheck -->|Yes| ExportJSON[Export Status to JSON]
+    ExportCheck -->|No| MonitorSleep[Sleep 5 seconds]
+    ExportJSON --> MonitorSleep
+    MonitorSleep --> MonitorRunning{System Running?}
+    MonitorRunning -->|Yes| LogStatus
+    MonitorRunning -->|No| FinalExport[Final JSON Export]
+    FinalExport --> MonitorEnd[Monitor End]
+    
+    %% Shared State (Synchronization Points)
+    UpdateStatus1 --> StatusMap[(ConcurrentHashMap<br/>Task Status<br/>🔒 Thread-Safe)]
+    UpdateStatus2 --> StatusMap
+    UpdateStatus3 --> StatusMap
+    ProcessTask1 --> StatusMap
+    ProcessTask2 --> StatusMap
+    ProcessTask3 --> StatusMap
+    ProcessTask4 --> StatusMap
+    ProcessTask5 --> StatusMap
+    Complete1 --> StatusMap
+    Complete2 --> StatusMap
+    Complete3 --> StatusMap
+    Complete4 --> StatusMap
+    Complete5 --> StatusMap
+    Failed1 --> StatusMap
+    Failed2 --> StatusMap
+    Failed3 --> StatusMap
+    Failed4 --> StatusMap
+    Failed5 --> StatusMap
+    RetryQueue1 --> StatusMap
+    RetryQueue2 --> StatusMap
+    RetryQueue3 --> StatusMap
+    RetryQueue4 --> StatusMap
+    RetryQueue5 --> StatusMap
+    RequeueTask --> StatusMap
+    
+    %% Atomic Counters
+    Complete1 --> ProcessedCounter[(AtomicInteger<br/>Processed Count<br/>🔒 Thread-Safe)]
+    Complete2 --> ProcessedCounter
+    Complete3 --> ProcessedCounter
+    Complete4 --> ProcessedCounter
+    Complete5 --> ProcessedCounter
+    
+    Failed1 --> FailedCounter[(AtomicInteger<br/>Failed Count<br/>🔒 Thread-Safe)]
+    Failed2 --> FailedCounter
+    Failed3 --> FailedCounter
+    Failed4 --> FailedCounter
+    Failed5 --> FailedCounter
+    
+    %% System Shutdown
+    ProducerEnd1 --> SystemShutdown{All Components<br/>Finished?}
+    ProducerEnd2 --> SystemShutdown
+    ProducerEnd3 --> SystemShutdown
+    WorkerEnd1 --> SystemShutdown
+    WorkerEnd2 --> SystemShutdown
+    WorkerEnd3 --> SystemShutdown
+    WorkerEnd4 --> SystemShutdown
+    WorkerEnd5 --> SystemShutdown
+    RetryEnd --> SystemShutdown
+    MonitorEnd --> SystemShutdown
+    
+    SystemShutdown -->|Yes| FinalStats[Print Final Statistics]
+    FinalStats --> End([System End])
+    
+    %% Styling
+    classDef producerClass fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    classDef workerClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef queueClass fill:#fff3e0,stroke:#f57c00,stroke-width:3px
+    classDef syncClass fill:#e8f5e8,stroke:#388e3c,stroke-width:3px
+    classDef monitorClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    class P1,P2,P3,GenTask1,GenTask2,GenTask3,Queue1,Queue2,Queue3 producerClass
+    class W1,W2,W3,W4,W5,TakeTask1,TakeTask2,TakeTask3,TakeTask4,TakeTask5,ProcessTask1,ProcessTask2,ProcessTask3,ProcessTask4,ProcessTask5 workerClass
+    class PriorityQueue,RetryQueueShared queueClass
+    class StatusMap,ProcessedCounter,FailedCounter syncClass
+    class Monitor,LogStatus,DetectStalled,ExportJSON monitorClass
