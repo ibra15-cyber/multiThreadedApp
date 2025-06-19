@@ -17,10 +17,9 @@ import java.util.logging.Logger;
  * Each processor can handle task processing with simulated delays and failure scenarios.
  */
 public class TaskProcessor implements Runnable {
-    private static final Logger logger = Logger.getLogger(TaskProcessor.class.getName());
+    private static final org.slf4j.Logger log = LoggerFactory.getLogger(TaskProcessor.class);
     private static final int MAX_RETRIES = 3;
     private static final double FAILURE_PROBABILITY = 0.1; // 10% chance of failure
-    private static final org.slf4j.Logger log = LoggerFactory.getLogger(TaskProcessor.class);
 
     private final BlockingQueue<Task> taskQueue;
     private final BlockingQueue<Task> retryQueue;
