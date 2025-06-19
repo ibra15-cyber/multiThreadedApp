@@ -1,8 +1,3 @@
-The `pom.xml` file indeed contains crucial configuration details that refine the instructions for building and running your project. Thank you for pointing that out.
-
-I've updated the "How to Run" section in the README to reflect the information from `pom.xml` more accurately, including the correct main class, Java version, and Maven profiles for different run durations.
-
-Here's the revised README:
 
 # ConcurQueue – A Multithreaded Job Processing Platform
 
