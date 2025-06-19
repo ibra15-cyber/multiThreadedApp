@@ -1,6 +1,5 @@
 package com.ibra.multithreaded.demo;
 
-import com.ibra.multithreaded.producer.TaskProducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
