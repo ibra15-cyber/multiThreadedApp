@@ -1,14 +1,13 @@
 package com.ibra.multithreaded.demo;
 
 
-import org.slf4j.Logger; // Import SLF4J Logger
-import org.slf4j.LoggerFactory; // Import SLF4J LoggerFactory
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-// Removed: import java.util.logging.Logger; (original JDK logger)
 
 /**
  * Demonstrates race conditions and their fixes in concurrent programming.
@@ -17,13 +16,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class RaceConditionDemo {
     private static final Logger logger = LoggerFactory.getLogger(RaceConditionDemo.class);
 
-    // Unsafe counter - will show race conditions
     private static int unsafeCounter = 0;
 
-    // Thread-safe counter using AtomicInteger
     private static final AtomicInteger safeCounter = new AtomicInteger(0);
 
-    // Thread-safe counter using synchronization
     private static int synchronizedCounter = 0;
     private static final Object counterLock = new Object();
 
@@ -34,27 +30,23 @@ public class RaceConditionDemo {
         final int incrementsPerThread = 1000;
         final int expectedTotal = numThreads * incrementsPerThread;
 
-        // Test 1: Unsafe counter (will show race conditions)
         logger.info("Test 1: Unsafe Counter");
-        testUnsafeCounter(numThreads, incrementsPerThread, expectedTotal);
+        testUnsafeCounter(incrementsPerThread, expectedTotal);
 
-        // Test 2: AtomicInteger (thread-safe)
         logger.info("Test 2: AtomicInteger Counter");
         testAtomicCounter(numThreads, incrementsPerThread, expectedTotal);
 
-        // Test 3: Synchronized counter (thread-safe)
         logger.info("Test 3: Synchronized Counter");
         testSynchronizedCounter(numThreads, incrementsPerThread, expectedTotal);
     }
 
-    private static void testUnsafeCounter(int numThreads, int incrementsPerThread, int expectedTotal) {
+    private static void testUnsafeCounter(int incrementsPerThread, int expectedTotal) {
         unsafeCounter = 0; // Reset
-        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+        ExecutorService executor = Executors.newFixedThreadPool(10);
 
         long startTime = System.currentTimeMillis();
 
-        // Submit tasks that increment unsafe counter
-        for (int i = 0; i < numThreads; i++) {
+        for (int i = 0; i < 10; i++) {
             executor.submit(() -> {
                 for (int j = 0; j < incrementsPerThread; j++) {
                     // UNSAFE: Multiple threads can read-modify-write simultaneously
@@ -84,12 +76,11 @@ public class RaceConditionDemo {
     }
 
     private static void testAtomicCounter(int numThreads, int incrementsPerThread, int expectedTotal) {
-        safeCounter.set(0); // Reset
+        safeCounter.set(0);
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
         long startTime = System.currentTimeMillis();
 
-        // Submit tasks that increment atomic counter
         for (int i = 0; i < numThreads; i++) {
             executor.submit(() -> {
                 for (int j = 0; j < incrementsPerThread; j++) {
@@ -102,7 +93,6 @@ public class RaceConditionDemo {
         shutdownAndWait(executor);
         long endTime = System.currentTimeMillis();
 
-        // Changed: SLF4J parameterized logging
         logger.info("AtomicInteger Result: {} (Expected: {}) - {}",
                 safeCounter.get(), expectedTotal,
                 safeCounter.get() == expectedTotal ? "CORRECT" : "ERROR");
@@ -115,7 +105,6 @@ public class RaceConditionDemo {
 
         long startTime = System.currentTimeMillis();
 
-        // Submit tasks that increment synchronized counter
         for (int i = 0; i < numThreads; i++) {
             executor.submit(() -> {
                 for (int j = 0; j < incrementsPerThread; j++) {

@@ -36,14 +36,11 @@ public class ShutdownManager {
         logger.info("Initiating system shutdown...");
         systemRunning.set(false);
 
-        // Process remaining tasks
         logger.info("Processing remaining tasks in queue...");
         queueManager.drainQueue(50);
 
-        // Shutdown thread pools
         threadManager.shutdownAll();
 
-        // Print final statistics
         statsManager.printFinalStatistics();
 
         logger.info("System shutdown complete");

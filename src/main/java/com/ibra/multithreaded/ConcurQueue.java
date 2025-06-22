@@ -31,23 +31,18 @@ public class ConcurQueue {
     public void start() {
         logger.info("Starting ConcurQueue system...");
 
-        // Setup shutdown hook
         shutdownManager.setupShutdownHook();
 
-        // Start monitoring
         statsManager.startMonitoring(shutdownManager.getSystemRunning());
 
-        // Start worker threads
         startWorkerThreads();
 
-        // Start producer threads
         startProducerThreads();
 
         logger.info("ConcurQueue system started successfully");
     }
 
     private void startWorkerThreads() {
-        // Start worker threads
         for (int i = 0; i < WORKER_POOL_SIZE; i++) {
             threadManager.getWorkerPool().submit(new TaskProcessor(
                     queueManager.getTaskQueue(),
@@ -97,7 +92,6 @@ public class ConcurQueue {
             ConcurQueue system = new ConcurQueue();
             system.start();
 
-            // Run for specified duration
             int runtimeSeconds = args.length > 0 ? Integer.parseInt(args[0]) : RUNTIME_SECONDS;
             system.runForDuration(runtimeSeconds);
 

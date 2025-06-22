@@ -10,7 +10,6 @@ import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Logger;
 
 /**
  * Task processor that simulates work being done on tasks.
@@ -67,7 +66,6 @@ public class TaskProcessor implements Runnable {
     private void processTask(Task task, String workerName) throws InterruptedException {
         String taskId = task.getId().toString();
 
-        // Update status to processing
         taskStatusMap.put(taskId, TaskStatus.PROCESSING);
         task.setLastProcessedTimestamp(Instant.now());
 
@@ -84,7 +82,6 @@ public class TaskProcessor implements Runnable {
                 throw new RuntimeException("Simulated processing failure");
             }
 
-            // Task completed successfully
             taskStatusMap.put(taskId, TaskStatus.COMPLETED);
             processedCount.incrementAndGet();
 
@@ -116,7 +113,6 @@ public class TaskProcessor implements Runnable {
         log.warn("Worker {} failed to process {}: {}", workerName, task, e.getMessage());
 
         if (task.getRetryCount() < MAX_RETRIES) {
-            // Create retry task
             Task retryTask = new Task(task);
             taskStatusMap.put(taskId, TaskStatus.RETRYING);
 

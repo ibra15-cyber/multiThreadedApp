@@ -32,7 +32,7 @@ public class DeadLockDemo {
         }, "DeadlockDemo-1");
 
         Thread t2 = new Thread(() -> {
-            synchronized (lock2) { // Same order as Thread 1
+            synchronized (lock2) {
                 logger.info("Thread 2: Acquired lock1");
                 try {
                     Thread.sleep(100);

@@ -53,7 +53,6 @@ public class ThreadPoolManager {
         }
     }
 
-    // Getters
     public ThreadPoolExecutor getWorkerPool() { return workerPool; }
     public ExecutorService getProducerPool() { return producerPool; }
     public ExecutorService getMonitorPool() { return monitorPool; }

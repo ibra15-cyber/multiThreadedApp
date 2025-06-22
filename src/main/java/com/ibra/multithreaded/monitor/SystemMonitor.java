@@ -66,7 +66,6 @@ public class SystemMonitor implements Runnable {
                 logSystemStatus();
                 detectStalledTasks();
 
-                // Export to JSON if interval has passed
                 long currentTime = System.currentTimeMillis();
                 if (currentTime - lastExportTime >= exportIntervalMs) {
                     exportStatusToJson();
@@ -84,7 +83,6 @@ public class SystemMonitor implements Runnable {
             }
         }
 
-        // Final export on shutdown
         exportStatusToJson();
         logger.info("System Monitor stopped");
     }
@@ -98,7 +96,6 @@ public class SystemMonitor implements Runnable {
 
         Map<TaskStatus, Long> statusCounts = getStatusCounts();
 
-        // Changed: SLF4J parameterized logging
         logger.info(
                 "=== SYSTEM STATUS === " +
                         "Queue: {} tasks, Retry Queue: {}, " +
@@ -159,23 +156,20 @@ public class SystemMonitor implements Runnable {
             systemStatus.put("failedCount", failedCount.get());
             systemStatus.put("statusCounts", getStatusCounts());
 
-            // Create detailed task status map
             Map<String, String> taskStatuses = new HashMap<>();
             taskStatusMap.forEach((id, status) ->
                     taskStatuses.put(id, status.name()));
 
             systemStatus.put("taskStatuses", taskStatuses);
 
-            // Export to file
             File outputFile = new File("concurqueue_status_" +
                     System.currentTimeMillis() + ".json");
             objectMapper.writeValue(outputFile, systemStatus);
 
-            logger.info("System status exported to: {}", outputFile.getName()); // Changed: SLF4J parameterized logging
+            logger.info("System status exported to: {}", outputFile.getName());
 
         } catch (IOException e) {
-            // Changed: SLF4J error/severe with exception message and throwable
-            logger.error("Failed to export system status: {}", e.getMessage(), e); // Pass exception as last argument
+            logger.error("Failed to export system status: {}", e.getMessage(), e);
         }
     }
 
